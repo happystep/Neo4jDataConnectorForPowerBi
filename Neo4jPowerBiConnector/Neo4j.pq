@@ -66,11 +66,11 @@ ExecuteCypherType = type function (
 ///
 ExecuteCypherImpl = (
 			cypher as text,
-            optional scheme as nullable text,
-			optional address as nullable text, 
-			optional port as nullable number,
-            optional neo4jVersion as nullable number,
-            optional databaseName as nullable text,
+            scheme as text,
+			address as text, 
+			port as number,
+            neo4jVersion as number,
+            databaseName as text,
             optional timeout as nullable number) as table =>
 let
     _source = Web.Contents(Neo4j.DefaultUri(scheme, address, port, neo4jVersion, databaseName), [
