@@ -20,38 +20,54 @@ shared Neo4j.ExecuteCypher = Value.ReplaceType(ExecuteCypherImpl, ExecuteCypherT
 // This is the type definition - providing hints on the PowerBI UI
 //
 ExecuteCypherType = type function (
+    label as (type text meta [
+            Documentation.FieldCaption = "Label",
+            Documentation.FieldDescription = "Ingresa el label aqui",
+            Documentation.SampleValues = {"AsientoContable"},
+            Documentation.AllowedValues = {"AsientoContable"}
+    ]),
+     startdate as (type text meta [
+            Documentation.FieldCaption = "fecha inicio",
+            Documentation.FieldDescription = "Inserte su fecha inicio aqui formato AAAA-MM-DD",
+            Documentation.SampleValues = {"2020-08-03"}
+    ]),
+     enddate as (type text meta [
+            Documentation.FieldCaption = "fecha limite",
+            Documentation.FieldDescription = "Inserte su fecha limite aqui formato AAAA-MM-DD",
+            Documentation.SampleValues = {"2020-08-04"}
+    ]),
     cypher as (type text meta [
             Documentation.FieldCaption = "Cypher",
-            Documentation.FieldDescription = "Enter your Cypher query here",
+            Documentation.FieldDescription = "Inserte su consulta de Cypher aqui",
             Documentation.SampleValues = {"MATCH (n) RETURN n", "MATCH (n) RETURN COUNT(n)"}
     ]),
-    optional scheme as (type text meta [
-		    Documentation.FieldDescription = "The scheme to connect to your Neo4j instance",
+    scheme as (type text meta [
+		    Documentation.FieldDescription = "El esquema para conectarse a su instancia de Neo4j",
             Documentation.SampleValues = {"http", "https"},
 		    Documentation.AllowedValues = { "http", "https" }
     ]),
-    optional address as (type text meta [
-            Documentation.FieldCaption = "Address",
-            Documentation.FieldDescription = "The address for your Neo4j instance",
+    address as (type text meta [
+            Documentation.FieldCaption = "Direccion",
+            Documentation.FieldDescription = "La direccion de su instancia de Neo4j",
             Documentation.SampleValues = {"localhost.", "127.0.0.1"}
     ]),
-    optional port as (type number meta [
-            Documentation.FieldCaption = "Port",
-            Documentation.FieldDescription = "The port of the Neo4j instance",
+    port as (type number meta [
+            Documentation.FieldCaption = "Puerto",
+            Documentation.FieldDescription = "El puerto de su instancia de Neo4j",
             Documentation.SampleValues = {"7474"}
     ]),
-    optional neo4jVersion as (type number meta [
-            Documentation.FieldCaption = "Neo4j Version",
-            Documentation.FieldDescription = "The version of the server you are connecting to.",
+    neo4jVersion as (type number meta [
+            Documentation.FieldCaption = "Version del Neo4j",
+            Documentation.FieldDescription = "La version del servidor al cual se conecta",
             Documentation.SampleValues = {3.5, 4.0},
             Documentation.AllowedValues = {3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 4.0}
     ]),
-    optional databaseName as (type text meta [
+    databaseName as (type text meta [
             Documentation.FieldCaption = "Database Name",
             Documentation.FieldDescription = "The name of your database (only used for a 4.0 DB, if unsure, use neo4j)",
             Documentation.SampleValues = {"neo4j", "hr"}
     ]),
-    optional timeout as (type number meta [
+    timeout as (type number meta [
             Documentation.FieldCaption = "Timeout for queries (seconds)",
             Documentation.FieldDescription = "If you're running a long query you might want to set this high",
             Documentation.SampleValues = {30}
@@ -65,13 +81,16 @@ ExecuteCypherType = type function (
 /// taking into account the comments from 'Will' - to get the column output using the names returned from the query
 ///
 ExecuteCypherImpl = (
+            label as text,
+            startdate as text,
+            enddate as text,
 			cypher as text,
-            optional scheme as nullable text,
-			optional address as nullable text, 
-			optional port as nullable number,
-            optional neo4jVersion as nullable number,
-            optional databaseName as nullable text,
-            optional timeout as nullable number) as table =>
+            scheme as nullable text,
+			address as nullable text, 
+			port as nullable number,
+            neo4jVersion as nullable number,
+            databaseName as nullable text,
+            timeout as nullable number) as table =>
 let
     _source = Web.Contents(Neo4j.DefaultUri(scheme, address, port, neo4jVersion, databaseName), [
         Headers = if Extension.CurrentCredential()[AuthenticationKind] = "Implicit" then ImplicitRequestHeaders else DefaultRequestHeaders,
@@ -137,8 +156,9 @@ Neo4j.Encode = (user as text, password as text) =>
 //
 // Takes the cypher given and converts it into a structure Neo4j expects at the Transaction Endpoint
 //
-Neo4j.CypherToM = (cypher as text) =>
+Neo4j.CypherToM = (cypher as text, startdate as text, enddate as text, label as text) =>
     let 
+        _label = if(label) = "AsientoContable" then "match(acc:AsientoContableCabecera)-[r]->(acd:AsientoContableDetalle)" else "match(n)",
         binary = Text.ToBinary("{
                     ""statements"" : [ {
                     ""statement"" : "" " & cypher & " ""} ]
