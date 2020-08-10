@@ -20,6 +20,11 @@ shared Neo4j.ExecuteCypher = Value.ReplaceType(ExecuteCypherImpl, ExecuteCypherT
 // This is the type definition - providing hints on the PowerBI UI
 //
 ExecuteCypherType = type function (
+    databaseName as (type text meta [
+            Documentation.FieldCaption = "Nombre de base de datos",
+            Documentation.FieldDescription = "El nombre de su base de datos (solo se usa para una base de datos 4.0, si no está seguro, use neo4j)",
+            Documentation.SampleValues = {"neo4j", "hr"}
+    ]),
     label as (type text meta [
             Documentation.FieldCaption = "Label",
             Documentation.FieldDescription = "Ingresa el label aqui",
@@ -36,11 +41,6 @@ ExecuteCypherType = type function (
             Documentation.FieldDescription = "Inserte su fecha limite aqui formato AAAA-MM-DD",
             Documentation.SampleValues = {"2020-08-04"}
     ]),
-    cypher as (type text meta [
-            Documentation.FieldCaption = "Cypher",
-            Documentation.FieldDescription = "Inserte su consulta de Cypher aqui",
-            Documentation.SampleValues = {"MATCH (n) RETURN n", "MATCH (n) RETURN COUNT(n)"}
-    ]),
     scheme as (type text meta [
 		    Documentation.FieldDescription = "El esquema para conectarse a su instancia de Neo4j",
             Documentation.SampleValues = {"http", "https"},
@@ -56,45 +56,46 @@ ExecuteCypherType = type function (
             Documentation.FieldDescription = "El puerto de su instancia de Neo4j",
             Documentation.SampleValues = {"7474"}
     ]),
+    limit as (type text meta [
+            Documentation.FieldCaption = "Limite",
+            Documentation.FieldDescription = "Limite de numero de filas que retorna la consulta",
+            Documentation.SampleValues = {"25"}
+    ]),
     neo4jVersion as (type number meta [
             Documentation.FieldCaption = "Version del Neo4j",
             Documentation.FieldDescription = "La version del servidor al cual se conecta",
             Documentation.SampleValues = {3.5, 4.0},
             Documentation.AllowedValues = {3.0, 3.1, 3.2, 3.3, 3.4, 3.5, 4.0}
     ]),
-    databaseName as (type text meta [
-            Documentation.FieldCaption = "Database Name",
-            Documentation.FieldDescription = "The name of your database (only used for a 4.0 DB, if unsure, use neo4j)",
-            Documentation.SampleValues = {"neo4j", "hr"}
-    ]),
     timeout as (type number meta [
-            Documentation.FieldCaption = "Timeout for queries (seconds)",
-            Documentation.FieldDescription = "If you're running a long query you might want to set this high",
+            Documentation.FieldCaption = "Tiempo de espera para consultas (segundos)",
+            Documentation.FieldDescription = "Si está ejecutando una consulta larga, es posible que desee establecer este valor alto",
             Documentation.SampleValues = {30}
     ])
 ) as table meta [
-		Documentation.Name = "Execute Cypher - Output",
-        Documentation.LongDescription = "Provides the response of the query in a Json document"];
+		Documentation.Name = "Ejecutar Consulta Cypher - Output",
+        Documentation.LongDescription = "Proporciona la respuesta de la consulta en un documento Json."];
 
 ///
 /// This is based on the blog post at: http://xclave.co.uk/2017/06/22/using-powerbi-with-neo4j/ 
 /// taking into account the comments from 'Will' - to get the column output using the names returned from the query
 ///
 ExecuteCypherImpl = (
-            label as text,
-            startdate as text,
-            enddate as text,
-			cypher as text,
+            databaseName as nullable text,
+            label as nullable text,
+            startdate as nullable text,
+            enddate as nullable text,
             scheme as nullable text,
 			address as nullable text, 
 			port as nullable number,
+            limit as nullable text,
             neo4jVersion as nullable number,
-            databaseName as nullable text,
             timeout as nullable number) as table =>
 let
+      Cypher = Neo4j.CreateCypher(startdate, enddate, limit, label),
     _source = Web.Contents(Neo4j.DefaultUri(scheme, address, port, neo4jVersion, databaseName), [
         Headers = if Extension.CurrentCredential()[AuthenticationKind] = "Implicit" then ImplicitRequestHeaders else DefaultRequestHeaders,
-        Content = Neo4j.CypherToM(cypher),
+        Content = Neo4j.CypherToM(Cypher),
         Timeout=#duration(0,0,0,Neo4j.GetTimeout(timeout))
     ]),
     _json = Json.Document(_source),
@@ -154,11 +155,26 @@ Neo4j.Encode = (user as text, password as text) =>
         encoded;
 
 //
+// constructs cypher query based on inputs
+//
+Neo4j.CreateCypher = (startdate as text, enddate as text, limit as text, label as text) =>
+    let 
+        _startdate = if (startdate) is null then "2010-01-01" else startdate,
+        _enddate = if (enddate) is null then "2020-12-31" else enddate,
+        _limit = if (limit) is null then "25" else limit,
+        _label = if label =  "AsientoContable" then "MATCH(acc:AsientoContableCabecera)-[r]->(acd:AsientoContableDetalle) " else "MATCH(n) ",
+        cypher = _label & "where date(acc.TransDate) = date(" & _startdate & ") or date(acc.TransDate) < date(" & _enddate & ") return acc,acd"  
+    in 
+        cypher;
+
+// example: 
+// match(acc:AsientoContableCabecera)-[r]->(acd:AsientoContableDetalle) where date(acc.TransDate)=date('2010-01-01') or date(acc.TransDate)< date('2010-01-31') return acc, acd
+
+//
 // Takes the cypher given and converts it into a structure Neo4j expects at the Transaction Endpoint
 //
-Neo4j.CypherToM = (cypher as text, startdate as text, enddate as text, label as text) =>
+Neo4j.CypherToM = (cypher as text) =>
     let 
-        _label = if(label) = "AsientoContable" then "match(acc:AsientoContableCabecera)-[r]->(acd:AsientoContableDetalle)" else "match(n)",
         binary = Text.ToBinary("{
                     ""statements"" : [ {
                     ""statement"" : "" " & cypher & " ""} ]

@@ -13,6 +13,6 @@ in
 */
 
 let 
-	result = Neo4j.ExecuteCypher("MATCH (n) RETURN COUNT(n)", null, "localhost", 8866)
+	result = Neo4j.ExecuteCypher("baltic", "AsientoContable", "2010-01-01", "2020-01-31", "http", "gbneo4j.grupobaudelet.com", 7474, "1000000", 4, 90 )
 in
 	result
